@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Svensk Nyproduktion – Försäljningsstatistik</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+  <header>
+    <div class="container">
+      <h1>Svensk Nyproduktion</h1>
+      <p class="subtitle">Daglig försäljningsstatistik för stora bostadsutvecklare</p>
+      <div id="last-updated" class="last-updated"></div>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <!-- Summary cards -->
+    <section class="summary-grid" id="summary-grid">
+      <div class="summary-card loading">Laddar...</div>
+    </section>
+
+    <!-- Filters -->
+    <section class="filters">
+      <div class="filter-group">
+        <label for="filter-developer">Utvecklare</label>
+        <select id="filter-developer">
+          <option value="">Alla</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label for="filter-status">Status</label>
+        <select id="filter-status">
+          <option value="">Alla</option>
+          <option value="selling">Till salu</option>
+          <option value="planning">Kommande</option>
+          <option value="sold_out">Slutsåld</option>
+          <option value="completed">Inflyttad</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label for="filter-search">Sök projekt</label>
+        <input type="text" id="filter-search" placeholder="Namn eller plats..." />
+      </div>
+      <div class="filter-group filter-count">
+        <span id="project-count">0 projekt</span>
+      </div>
+    </section>
+
+    <!-- Charts row -->
+    <section class="charts-row">
+      <div class="chart-card">
+        <h3>Projekt per utvecklare</h3>
+        <canvas id="chart-by-developer"></canvas>
+      </div>
+      <div class="chart-card">
+        <h3>Status fördelning</h3>
+        <canvas id="chart-by-status"></canvas>
+      </div>
+      <div class="chart-card">
+        <h3>Tillgängliga bostäder</h3>
+        <canvas id="chart-available"></canvas>
+      </div>
+    </section>
+
+    <!-- Projects table -->
+    <section class="projects-section">
+      <h2>Alla projekt</h2>
+      <div class="table-wrapper">
+        <table id="projects-table">
+          <thead>
+            <tr>
+              <th class="sortable" data-col="developer">Utvecklare <span class="sort-icon">↕</span></th>
+              <th class="sortable" data-col="name">Projekt <span class="sort-icon">↕</span></th>
+              <th class="sortable" data-col="location">Plats <span class="sort-icon">↕</span></th>
+              <th class="sortable" data-col="status">Status <span class="sort-icon">↕</span></th>
+              <th class="sortable" data-col="total_units">Totalt <span class="sort-icon">↕</span></th>
+              <th class="sortable" data-col="available_units">Lediga <span class="sort-icon">↕</span></th>
+              <th class="sortable" data-col="sold_units">Sålda <span class="sort-icon">↕</span></th>
+              <th class="sortable" data-col="price_from">Pris från <span class="sort-icon">↕</span></th>
+              <th>Inflyttning</th>
+            </tr>
+          </thead>
+          <tbody id="projects-tbody">
+            <tr><td colspan="9" class="loading-row">Laddar projekt...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- History section (shown when history data available) -->
+    <section class="history-section" id="history-section" style="display:none">
+      <h2>Historisk data</h2>
+      <p class="history-note">Databasen byggs upp dag för dag. Kom tillbaka om några veckor för att se trender!</p>
+      <canvas id="chart-history"></canvas>
+    </section>
+
+  </main>
+
+  <footer>
+    <div class="container">
+      <p>Data scraped dagligen från offentliga webbplatser. Uppdateras varje natt kl 02:00 UTC.</p>
+      <p>Källor: JM · Riksbyggen · HSB · Peab · Skanska · Bonava</p>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

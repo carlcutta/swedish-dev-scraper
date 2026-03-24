@@ -1,0 +1,71 @@
+name: Daily Scrape
+
+on:
+  schedule:
+    # 06:00 UTC = 07:00 CET / 08:00 CEST (Swedish time)
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      developers:
+        description: 'Comma-separated list of developers to scrape (leave blank for all)'
+        required: false
+        default: ''
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      contents: write   # Required to commit data back to the repo
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install Playwright Chromium (with system deps)
+        run: playwright install chromium --with-deps
+
+      - name: Run scrapers
+        run: |
+          if [ -n "${{ github.event.inputs.developers }}" ]; then
+            python runner.py ${{ github.event.inputs.developers }}
+          else
+            python runner.py
+          fi
+        env:
+          PYTHONUNBUFFERED: "1"
+          PROXY_URL: ${{ secrets.PROXY_URL }}
+
+      - name: Commit scraped data
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/
+          # Only commit if there are actual changes
+          if git diff --staged --quiet; then
+            echo "No data changes to commit."
+          else
+            git commit -m "data: scrape $(date -u +%Y-%m-%d)"
+            git push
+          fi
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scraper-logs-${{ github.run_id }}
+          path: |
+            data/latest/
+          retention-days: 7

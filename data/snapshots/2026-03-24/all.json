@@ -1,0 +1,15 @@
+{
+  "scraped_at": "2026-03-24T15:48:33.168048+00:00",
+  "date": "2026-03-24",
+  "developers": {
+    "Besqab": {
+      "developer": "Besqab",
+      "developer_url": "https://www.besqab.se",
+      "scraped_at": "2026-03-24T15:48:23.414943+00:00",
+      "project_count": 0,
+      "error": "Page.goto: net::ERR_INVALID_AUTH_CREDENTIALS at https://www.besqab.se/bostader/\nCall log:\n  - navigating to \"https://www.besqab.se/bostader/\", waiting until \"domcontentloaded\"\n",
+      "projects": []
+    }
+  },
+  "total_projects": 0
+}

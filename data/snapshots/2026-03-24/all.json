@@ -1,11 +1,59 @@
 {
-  "scraped_at": "2026-03-24T15:48:33.168048+00:00",
+  "scraped_at": "2026-03-24T16:06:49.629452+00:00",
   "date": "2026-03-24",
   "developers": {
+    "JM": {
+      "developer": "JM",
+      "developer_url": "https://www.jm.se",
+      "scraped_at": "2026-03-24T16:06:04.562010+00:00",
+      "project_count": 0,
+      "error": "Page.goto: net::ERR_INVALID_AUTH_CREDENTIALS at https://www.jm.se/hitta-bostad/\nCall log:\n  - navigating to \"https://www.jm.se/hitta-bostad/\", waiting until \"domcontentloaded\"\n",
+      "projects": []
+    },
+    "Riksbyggen": {
+      "developer": "Riksbyggen",
+      "developer_url": "https://www.riksbyggen.se",
+      "scraped_at": "2026-03-24T16:06:04.562120+00:00",
+      "project_count": 0,
+      "error": "Page.goto: net::ERR_INVALID_AUTH_CREDENTIALS at https://www.riksbyggen.se/kop-bostad/\nCall log:\n  - navigating to \"https://www.riksbyggen.se/kop-bostad/\", waiting until \"domcontentloaded\"\n",
+      "projects": []
+    },
+    "HSB": {
+      "developer": "HSB",
+      "developer_url": "https://www.hsb.se",
+      "scraped_at": "2026-03-24T16:06:22.292085+00:00",
+      "project_count": 0,
+      "error": "Page.goto: net::ERR_INVALID_AUTH_CREDENTIALS at https://www.hsb.se/sok-bostad/\nCall log:\n  - navigating to \"https://www.hsb.se/sok-bostad/\", waiting until \"domcontentloaded\"\n",
+      "projects": []
+    },
+    "Peab": {
+      "developer": "Peab",
+      "developer_url": "https://www.peab.se",
+      "scraped_at": "2026-03-24T16:06:22.330247+00:00",
+      "project_count": 0,
+      "error": "Page.goto: net::ERR_INVALID_AUTH_CREDENTIALS at https://www.peab.se/bostad/\nCall log:\n  - navigating to \"https://www.peab.se/bostad/\", waiting until \"domcontentloaded\"\n",
+      "projects": []
+    },
+    "Skanska": {
+      "developer": "Skanska",
+      "developer_url": "https://www.skanska.se",
+      "scraped_at": "2026-03-24T16:06:31.433430+00:00",
+      "project_count": 0,
+      "error": "Page.goto: net::ERR_INVALID_AUTH_CREDENTIALS at https://www.skanska.se/vart-erbjudande/bygga-bo/\nCall log:\n  - navigating to \"https://www.skanska.se/vart-erbjudande/bygga-bo/\", waiting until \"domcontentloaded\"\n",
+      "projects": []
+    },
+    "Bonava": {
+      "developer": "Bonava",
+      "developer_url": "https://www.bonava.se",
+      "scraped_at": "2026-03-24T16:06:31.480269+00:00",
+      "project_count": 0,
+      "error": "Page.goto: net::ERR_INVALID_AUTH_CREDENTIALS at https://www.bonava.se/hitta-bostad/\nCall log:\n  - navigating to \"https://www.bonava.se/hitta-bostad/\", waiting until \"domcontentloaded\"\n",
+      "projects": []
+    },
     "Besqab": {
       "developer": "Besqab",
       "developer_url": "https://www.besqab.se",
-      "scraped_at": "2026-03-24T15:48:23.414943+00:00",
+      "scraped_at": "2026-03-24T16:06:40.676937+00:00",
       "project_count": 0,
       "error": "Page.goto: net::ERR_INVALID_AUTH_CREDENTIALS at https://www.besqab.se/bostader/\nCall log:\n  - navigating to \"https://www.besqab.se/bostader/\", waiting until \"domcontentloaded\"\n",
       "projects": []

@@ -1,0 +1,8 @@
+{
+  "developer": "Riksbyggen",
+  "developer_url": "https://www.riksbyggen.se",
+  "scraped_at": "2026-03-24T16:06:04.562120+00:00",
+  "project_count": 0,
+  "error": "Page.goto: net::ERR_INVALID_AUTH_CREDENTIALS at https://www.riksbyggen.se/kop-bostad/\nCall log:\n  - navigating to \"https://www.riksbyggen.se/kop-bostad/\", waiting until \"domcontentloaded\"\n",
+  "projects": []
+}

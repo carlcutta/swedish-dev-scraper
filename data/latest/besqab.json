@@ -1,0 +1,8 @@
+{
+  "developer": "Besqab",
+  "developer_url": "https://www.besqab.se",
+  "scraped_at": "2026-03-24T16:06:40.676937+00:00",
+  "project_count": 0,
+  "error": "Page.goto: net::ERR_INVALID_AUTH_CREDENTIALS at https://www.besqab.se/bostader/\nCall log:\n  - navigating to \"https://www.besqab.se/bostader/\", waiting until \"domcontentloaded\"\n",
+  "projects": []
+}

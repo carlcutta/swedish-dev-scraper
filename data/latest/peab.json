@@ -1,0 +1,8 @@
+{
+  "developer": "Peab",
+  "developer_url": "https://www.peab.se",
+  "scraped_at": "2026-03-24T16:06:22.330247+00:00",
+  "project_count": 0,
+  "error": "Page.goto: net::ERR_INVALID_AUTH_CREDENTIALS at https://www.peab.se/bostad/\nCall log:\n  - navigating to \"https://www.peab.se/bostad/\", waiting until \"domcontentloaded\"\n",
+  "projects": []
+}

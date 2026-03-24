@@ -4,6 +4,7 @@ from .hsb import HSBScraper
 from .peab import PeabScraper
 from .skanska import SkanskaScraper
 from .bonava import BonavaScraper
+from .besqab import BesqabScraper
 
 ALL_SCRAPERS = [
     JMScraper,
@@ -12,4 +13,5 @@ ALL_SCRAPERS = [
     PeabScraper,
     SkanskaScraper,
     BonavaScraper,
+    BesqabScraper,
 ]

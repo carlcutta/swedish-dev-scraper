@@ -48,6 +48,9 @@ jobs:
           PYTHONUNBUFFERED: "1"
           PROXY_URL: ${{ secrets.PROXY_URL }}
 
+      - name: Export apartments CSV
+        run: python tools/export_csv.py
+
       - name: Commit scraped data
         run: |
           git config user.name  "github-actions[bot]"

@@ -19,5 +19,15 @@ jobs:
           pip install playwright
           playwright install chromium --with-deps
 
-      - name: Scrape Slottsparken
+      - name: Scrape Hertha
         run: python tools/besqab_test_project.py
+
+      - name: Export CSV
+        run: python tools/export_csv.py
+
+      - name: Upload CSV
+        uses: actions/upload-artifact@v4
+        with:
+          name: besqab-apartments-csv
+          path: data/latest/apartments.csv
+          retention-days: 7

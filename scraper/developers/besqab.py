@@ -1,21 +1,36 @@
 """Scraper for Besqab - besqab.se
+
 Strategy:
-  1. XHR interception on /bostader/
-  2. __NEXT_DATA__ / __NUXT_DATA__ fallback
-  3. DOM fallback
+  1. Crawl besqab.se from the root to discover project URLs.
+     Project pages follow the 3-segment pattern: /region/area/project/
+     (e.g. /stockholm/slakthusomradet/fransyskan/)
+  2. For each project page, render fully with Playwright, then locate the
+     apartment listing table and extract every row as a dict keyed by the
+     column header exactly as it appears on the page.
+  3. Return one Project per project page with the raw apartment rows attached.
 """
+import asyncio
 import re
-from playwright.async_api import Browser
+from urllib.parse import urlparse
+from playwright.async_api import Browser, Page
 from ..base import BaseScraper
 from ..models import Project
 
 
-LISTING_PATHS = ["/bostader/", "/projekt/", "/lediga-bostader/"]
+BASE_URL = "https://www.besqab.se"
+
+# Path segments that identify navigation / utility pages — never project pages.
+_NAV_SLUGS = {
+    "kontakt", "om-oss", "om-besqab", "hallbarhet", "h\u00e5llbarhet",
+    "investerare", "press", "karriar", "karri\u00e4r", "nyheter",
+    "integritetspolicy", "cookies", "sitemap", "search", "s\u00f6k", "404",
+    "gdpr", "tillganglighetsredogorelse",
+}
 
 
 class BesqabScraper(BaseScraper):
     name = "Besqab"
-    url = "https://www.besqab.se"
+    url = BASE_URL
 
     async def scrape(self, browser: Browser) -> list:
         ctx = await self._new_context(browser)
@@ -23,192 +38,293 @@ class BesqabScraper(BaseScraper):
         projects = []
 
         try:
-            for path in LISTING_PATHS:
-                listing_url = f"{self.url}{path}"
+            project_urls = await _discover_project_urls(page)
+            print(f"[Besqab] Discovered {len(project_urls)} project URLs")
 
-                # Strategy 1: intercept XHR JSON
-                data = await self._intercept_json(
-                    page,
-                    listing_url,
-                    r"(api|project|bostad|hem|homes|listings)",
-                )
-                if data:
-                    items = _dig_list(data)
-                    projects = [p for p in (_parse(i, self.name, self.url) for i in items) if p]
-                    if projects:
-                        break
-
-                # Strategy 2: __NEXT_DATA__ / __NUXT_DATA__
-                if not projects:
-                    nd = await self._next_data(page, listing_url)
-                    if nd:
-                        items = (
-                            _dig_list(nd.get("props", {}).get("pageProps", {}).get("projects"))
-                            or _dig_list(nd.get("props", {}).get("pageProps", {}).get("homes"))
-                            or _dig_list(nd.get("props", {}).get("pageProps", {}).get("items"))
-                            or _dig_list(nd)
+            for project_url in project_urls:
+                try:
+                    project = await _scrape_project(page, project_url)
+                    if project:
+                        projects.append(project)
+                        print(
+                            f"[Besqab] {project.name}: "
+                            f"{len(project.apartments)} apartments, "
+                            f"{project.available_units} available"
                         )
-                        projects = [p for p in (_parse(i, self.name, self.url) for i in items) if p]
-                        if projects:
-                            break
-
-                # Strategy 3: DOM fallback
-                if not projects:
-                    soup = await self._rendered_soup(page, listing_url)
-                    cards = (
-                        soup.select("[class*='project-card']")
-                        or soup.select("[class*='ProjectCard']")
-                        or soup.select("[class*='listing-item']")
-                        or soup.select("article[class*='project']")
-                        or soup.select("article[class*='bostad']")
-                        or soup.select(".card")
-                    )
-                    for card in cards:
-                        p = _parse_dom(card, self.name, self.url)
-                        if p:
-                            projects.append(p)
-                    if projects:
-                        break
+                except Exception as exc:
+                    print(f"[Besqab] Error scraping {project_url}: {exc}")
 
         finally:
             await ctx.close()
 
-        print(f"[Besqab] {len(projects)} projects")
+        print(f"[Besqab] Done \u2014 {len(projects)} projects")
         return projects
 
 
-def _dig_list(data) -> list:
-    if data is None:
-        return []
-    if isinstance(data, list):
-        return data
-    if isinstance(data, dict):
-        for k in ["projects", "items", "data", "homes", "results", "listings", "bostader"]:
-            if k in data:
-                v = data[k]
-                if isinstance(v, list):
-                    return v
-                if isinstance(v, dict):
-                    inner = _dig_list(v)
-                    if inner:
-                        return inner
-    return []
+# ── URL discovery ──────────────────────────────────────────────────────────────────────────────
+
+async def _discover_project_urls(page: Page) -> list[str]:
+    """
+    Walk besqab.se breadth-first, collecting URLs that are exactly 3 path
+    segments deep — those are individual project pages.
+    Depth-1 and depth-2 URLs are queued for further crawling.
+    """
+    visited: set[str] = set()
+    project_urls: set[str] = set()
+
+    # Seed: root + known region/listing paths
+    to_visit: list[str] = [
+        BASE_URL + "/",
+        BASE_URL + "/stockholm/",
+        BASE_URL + "/uppsala/",
+        BASE_URL + "/v\u00e4stmanland/",
+        BASE_URL + "/vara-projekt/",
+        BASE_URL + "/projekt/",
+        BASE_URL + "/bostader/",
+    ]
+
+    while to_visit:
+        url = to_visit.pop(0)
+        if url in visited:
+            continue
+        visited.add(url)
+
+        try:
+            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            await asyncio.sleep(0.8)
+        except Exception:
+            continue
+
+        links: list[str] = await page.eval_on_selector_all(
+            "a[href]", "els => els.map(e => e.href)"
+        )
+
+        for link in links:
+            norm = _normalize(link)
+            if not norm or norm in visited:
+                continue
+            depth = _path_depth(norm)
+            if depth == 3:
+                project_urls.add(norm)
+            elif depth in (1, 2) and norm not in to_visit:
+                to_visit.append(norm)
+
+    return sorted(project_urls)
 
 
-def _parse(item: dict, dev: str, base_url: str) -> Project | None:
-    if not isinstance(item, dict):
-        return None
-    name = (
-        item.get("name") or item.get("title") or item.get("projectName")
-        or item.get("heading") or item.get("projectTitle") or ""
-    )
-    if not name:
-        return None
-    pid = str(
-        item.get("id") or item.get("projectId") or item.get("externalId")
-        or item.get("slug") or ""
-    )
-    location = item.get("city") or item.get("location") or item.get("municipality") or item.get("area") or ""
-    municipality = item.get("municipality") or item.get("kommun") or location
-    county = item.get("county") or item.get("region") or item.get("lan") or ""
-    raw_url = item.get("url") or item.get("href") or item.get("link") or item.get("slug") or ""
-    if str(raw_url).startswith("http"):
-        url = raw_url
-    elif raw_url:
-        url = base_url + ("/" if not str(raw_url).startswith("/") else "") + raw_url
-    else:
-        url = f"{base_url}/bostader/{pid}" if pid else base_url
-    total = _int(item.get("totalUnits") or item.get("numberOfUnits") or item.get("totalHomes") or item.get("antal"))
-    available = _int(
-        item.get("availableUnits") or item.get("availableHomes")
-        or item.get("forSale") or item.get("ledigaBostader")
-    )
-    sold = _int(item.get("soldUnits") or item.get("soldHomes") or item.get("sold"))
-    if total and available is not None and sold is None:
-        sold = total - available
-    status = _status(item.get("status") or item.get("saleStatus") or item.get("phase") or item.get("stage") or "")
-    if available == 0 and total:
-        status = "sold_out"
-    price_from = _price(item.get("priceFrom") or item.get("startPrice") or item.get("minPrice") or item.get("prisFrom"))
-    price_to = _price(item.get("priceTo") or item.get("maxPrice") or item.get("prisTill"))
-    monthly_from = _price(item.get("monthlyFeeFrom") or item.get("avgiftFrom") or item.get("fee"))
-    monthly_to = _price(item.get("monthlyFeeTo") or item.get("avgiftTo"))
-    move_in = str(
-        item.get("moveInDate") or item.get("completionDate") or item.get("readyDate")
-        or item.get("inflyttning") or item.get("inflyttningsDatum") or ""
-    )
-    housing = _housing(item.get("housingType") or item.get("homeType") or item.get("bostadstyp") or "")
-    return Project(
-        developer=dev,
-        id=f"besqab-{pid}" if pid else f"besqab-{name.lower().replace(' ', '-')}",
-        name=name, url=url, location=location, municipality=municipality, county=county,
-        status=status, housing_types=housing,
-        total_units=total, available_units=available, sold_units=sold,
-        price_from=price_from, price_to=price_to,
-        monthly_fee_from=monthly_from, monthly_fee_to=monthly_to,
-        move_in_date=move_in[:10] if move_in else None,
-    )
-
-
-def _parse_dom(card, dev: str, base_url: str) -> Project | None:
-    name_el = card.select_one("h2, h3, h4, [class*='title'], [class*='name'], [class*='heading']")
-    name = name_el.get_text(strip=True) if name_el else ""
-    if not name:
-        return None
-    link = card.select_one("a[href]")
-    url = link["href"] if link else ""
-    if url and not url.startswith("http"):
-        url = base_url + url
-    pid = name.lower().replace(" ", "-")
-    return Project(
-        developer=dev,
-        id=f"besqab-{pid}",
-        name=name, url=url or base_url,
-        location="", municipality="", county="", status="selling",
-    )
-
-
-def _int(v) -> int | None:
-    if v is None:
-        return None
+def _normalize(url: str) -> str | None:
+    """Return a canonical besqab.se URL or None if irrelevant."""
     try:
-        return int(str(v).replace(" ", "").replace("\xa0", ""))
+        p = urlparse(url)
     except Exception:
         return None
-
-
-def _price(v) -> int | None:
-    if v is None:
+    if p.netloc not in ("www.besqab.se", "besqab.se"):
         return None
-    s = re.sub(r"[^\d.]", "", str(v))
-    try:
-        return int(float(s))
-    except Exception:
+    path = p.path.rstrip("/") + "/"
+    segments = [s for s in path.strip("/").split("/") if s]
+    if not segments:
+        return None
+    if any(s in _NAV_SLUGS for s in segments):
+        return None
+    # Skip file-like paths
+    if re.search(r"\.[a-z]{2,4}$", segments[-1]):
+        return None
+    return f"https://www.besqab.se{path}"
+
+
+def _path_depth(url: str) -> int:
+    path = urlparse(url).path
+    return len([s for s in path.strip("/").split("/") if s])
+
+
+# ── Per-project scraping ───────────────────────────────────────────────────────────────────
+
+async def _scrape_project(page: Page, url: str) -> Project | None:
+    """Navigate to a project page and extract name + full apartment table."""
+    await page.goto(url, wait_until="networkidle", timeout=60000)
+    await asyncio.sleep(1.5)
+
+    # Project name
+    h1 = await page.query_selector("h1")
+    name = (await h1.inner_text()).strip() if h1 else ""
+    if not name:
+        title = await page.title()
+        name = title.split("|")[0].split("-")[0].strip()
+    if not name:
         return None
 
+    # Location from URL segments
+    segments = [s for s in urlparse(url).path.strip("/").split("/") if s]
+    region = segments[0].replace("-", " ").title() if segments else ""
+    area = segments[1].replace("-", " ").title() if len(segments) > 1 else ""
+    location = f"{area}, {region}" if area else region
+    slug = segments[-1] if segments else re.sub(r"[^a-z0-9]+", "-", name.lower())
 
-def _status(raw: str) -> str:
-    r = raw.lower()
-    if any(k in r for k in ["plan", "kommande", "coming", "upcoming", "future"]):
-        return "planning"
-    if any(k in r for k in ["sold", "slutsåld", "såld", "sold out"]):
-        return "sold_out"
-    if any(k in r for k in ["klar", "completed", "inflyttad", "ready", "färdig"]):
-        return "completed"
-    return "selling"
+    # Apartment table
+    apartments = await _extract_table(page)
+
+    # Summary stats derived from individual apartment rows
+    available = sum(1 for a in apartments if _is_available(a))
+    sold = sum(1 for a in apartments if _is_sold(a))
+    total = len(apartments) or None
+    prices = [p for a in apartments for p in [_extract_price(a)] if p]
+    fees = [f for a in apartments for f in [_extract_fee(a)] if f]
+
+    status = "sold_out" if (total and available == 0) else "selling"
+
+    return Project(
+        developer="Besqab",
+        id=f"besqab-{slug}",
+        name=name,
+        url=url,
+        location=location,
+        municipality=area or region,
+        county=region,
+        status=status,
+        total_units=total,
+        available_units=available if apartments else None,
+        sold_units=sold if apartments else None,
+        price_from=min(prices) if prices else None,
+        price_to=max(prices) if prices else None,
+        monthly_fee_from=min(fees) if fees else None,
+        monthly_fee_to=max(fees) if fees else None,
+        apartments=apartments,
+    )
 
 
-def _housing(raw) -> list:
-    if not raw:
-        return []
-    if isinstance(raw, list):
-        return [str(h).lower() for h in raw]
-    s = str(raw).lower()
-    out = []
-    if any(k in s for k in ["lägenhet", "apartment", "bostadsrätt", "br"]):
-        out.append("apartment")
-    if any(k in s for k in ["radhus", "townhouse", "parhus"]):
-        out.append("townhouse")
-    if any(k in s for k in ["villa", "kedjehus"]):
-        out.append("villa")
-    return out or [s]
+# ── Table extraction ─────────────────────────────────────────────────────────────────────────────
+
+async def _extract_table(page: Page) -> list[dict]:
+    """
+    Try to find the apartment listing table on the page.
+    Tries <table> first, then common div/grid patterns.
+    Returns a list of dicts with column headers as keys, exactly as
+    they appear on the page (Swedish column names preserved).
+    """
+    rows = await _extract_html_table(page)
+    if rows:
+        return rows
+    return await _extract_div_table(page)
+
+
+async def _extract_html_table(page: Page) -> list[dict]:
+    """Extract rows from the largest <table> on the page."""
+    return await page.evaluate("""
+        () => {
+            const tables = Array.from(document.querySelectorAll('table'));
+            if (!tables.length) return [];
+
+            // Use the table with the most rows
+            const best = tables.reduce((a, b) =>
+                a.querySelectorAll('tr').length >= b.querySelectorAll('tr').length ? a : b
+            );
+            const allRows = Array.from(best.querySelectorAll('tr'));
+            if (allRows.length < 2) return [];
+
+            // Headers: prefer <thead>, else first <tr>
+            const theadCells = best.querySelectorAll('thead th, thead td');
+            const headers = theadCells.length
+                ? Array.from(theadCells).map(el => el.innerText.trim())
+                : Array.from(allRows[0].querySelectorAll('th, td')).map(el => el.innerText.trim());
+
+            const bodyRows = best.querySelectorAll('tbody tr');
+            const dataRows = bodyRows.length ? Array.from(bodyRows) : allRows.slice(1);
+
+            return dataRows.map(row => {
+                const cells = Array.from(row.querySelectorAll('td, th'));
+                if (!cells.length) return null;
+                const obj = {};
+                cells.forEach((cell, i) => {
+                    const key = headers[i] || ('col_' + i);
+                    obj[key] = cell.innerText.trim();
+                });
+                return obj;
+            }).filter(Boolean);
+        }
+    """) or []
+
+
+async def _extract_div_table(page: Page) -> list[dict]:
+    """
+    Fallback for CSS-grid / div-based apartment lists.
+    Looks for a container whose class name suggests an apartment list,
+    then treats child elements as rows.
+    """
+    return await page.evaluate("""
+        () => {
+            const selectors = [
+                '[class*="apartment"]', '[class*="Apartment"]',
+                '[class*="bostad"]',    '[class*="Bostad"]',
+                '[class*="unit-list"]', '[class*="UnitList"]',
+                '[class*="home-list"]', '[class*="HomeList"]',
+                '[class*="listing"]',   '[class*="Listing"]',
+                '[class*="lagenh"]',    '[class*="object-list"]',
+            ];
+            let container = null;
+            for (const sel of selectors) {
+                const el = document.querySelector(sel);
+                if (el && el.children.length > 1) { container = el; break; }
+            }
+            if (!container) return [];
+
+            const rows = Array.from(container.children);
+            if (rows.length < 2) return [];
+
+            const headers = Array.from(rows[0].children).map(el => el.innerText.trim());
+            if (!headers.some(h => h)) return [];
+
+            return rows.slice(1).map(row => {
+                const cells = Array.from(row.children);
+                if (!cells.length) return null;
+                const obj = {};
+                cells.forEach((cell, i) => {
+                    obj[headers[i] || ('col_' + i)] = cell.innerText.trim();
+                });
+                return obj;
+            }).filter(Boolean);
+        }
+    """) or []
+
+
+# ── Helpers ──────────────────────────────────────────────────────────────────────────────────────
+
+def _is_available(apt: dict) -> bool:
+    for key, val in apt.items():
+        if any(k in key.lower() for k in ["status", "tillg", "ledig"]):
+            v = str(val).lower()
+            if any(k in v for k in ["tillgänglig", "ledig", "available", "till salu"]):
+                return True
+    return False
+
+
+def _is_sold(apt: dict) -> bool:
+    for key, val in apt.items():
+        if any(k in key.lower() for k in ["status", "såld", "sold"]):
+            v = str(val).lower()
+            if any(k in v for k in ["såld", "sold", "reserverad", "reserved"]):
+                return True
+    return False
+
+
+def _extract_price(apt: dict) -> int | None:
+    for key, val in apt.items():
+        if any(k in key.lower() for k in ["pris", "price", "kr", "kpris"]):
+            cleaned = re.sub(r"[^\d]", "", str(val))
+            if cleaned and len(cleaned) >= 4:
+                try:
+                    return int(cleaned)
+                except Exception:
+                    pass
+    return None
+
+
+def _extract_fee(apt: dict) -> int | None:
+    for key, val in apt.items():
+        if any(k in key.lower() for k in ["avgift", "fee", "mån", "månadskostnad"]):
+            cleaned = re.sub(r"[^\d]", "", str(val))
+            if cleaned:
+                try:
+                    return int(cleaned)
+                except Exception:
+                    pass
+    return None

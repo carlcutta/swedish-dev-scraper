@@ -1,12 +1,14 @@
 """Test scrape of a single Besqab project page.
 
-Prints every apartment row found in any table/list on the page,
-along with a dump of all text visible on the page for debugging.
+Targets the apartment table with headers:
+  Nummer, Vaning, Antal rum, Storlek, Pris, Avgift, Status
 """
 import asyncio
 from playwright.async_api import async_playwright
 
-URL = "https://www.besqab.se/stockholm/bro-malarstad/slottsparken/"
+URL = "https://www.besqab.se/stockholm/danderyd/hertha/"
+
+EXPECTED_HEADERS = {"nummer", "våning", "antal rum", "storlek", "pris", "avgift", "status"}
 
 
 async def main():
@@ -18,9 +20,9 @@ async def main():
             timezone_id="Europe/Stockholm",
             extra_http_headers={"Accept-Language": "sv-SE,sv;q=0.9"},
         )
-        await ctx.add_init_script("""
-            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-        """)
+        await ctx.add_init_script(
+            "Object.defineProperty(navigator, 'webdriver', { get: () => undefined });"
+        )
         page = await ctx.new_page()
 
         print(f"Navigating to: {URL}")
@@ -28,72 +30,80 @@ async def main():
         print(f"HTTP status: {resp.status}")
         await asyncio.sleep(2)
 
-        title = await page.title()
-        print(f"Page title: {title}")
-
+        print(f"Page title: {await page.title()}")
         h1 = await page.query_selector("h1")
         if h1:
             print(f"H1: {await h1.inner_text()}")
 
-        # Dump all <table> elements
+        # Extract every <table> and check which one has our headers
         tables = await page.evaluate("""
             () => {
-                const out = [];
-                document.querySelectorAll('table').forEach((tbl, ti) => {
+                return Array.from(document.querySelectorAll('table')).map((tbl, ti) => {
                     const headerEls = tbl.querySelectorAll('thead th, thead td');
                     const firstRow = tbl.querySelector('tr');
                     const headers = headerEls.length
                         ? Array.from(headerEls).map(el => el.innerText.trim())
-                        : firstRow ? Array.from(firstRow.querySelectorAll('th,td')).map(el => el.innerText.trim()) : [];
-                    const rows = [];
-                    tbl.querySelectorAll('tbody tr').forEach(tr => {
-                        const cells = Array.from(tr.querySelectorAll('td,th')).map(el => el.innerText.trim());
-                        if (cells.some(c => c)) rows.push(cells);
-                    });
-                    out.push({ table_index: ti, headers, rows });
+                        : firstRow
+                            ? Array.from(firstRow.querySelectorAll('th,td')).map(el => el.innerText.trim())
+                            : [];
+                    const rows = Array.from(tbl.querySelectorAll('tbody tr')).map(tr =>
+                        Array.from(tr.querySelectorAll('td,th')).map(el => el.innerText.trim())
+                    ).filter(cells => cells.some(c => c));
+                    return { table_index: ti, headers, rows };
                 });
-                return out;
             }
         """)
 
-        print(f"\n=== TABLES FOUND: {len(tables)} ===")
+        print(f"\n=== {len(tables)} TABLE(S) FOUND ===")
         for t in tables:
-            print(f"\n-- Table {t['table_index']} --")
-            print(f"   Headers: {t['headers']}")
-            print(f"   Rows ({len(t['rows'])}):")
+            headers_lower = {h.lower() for h in t['headers']}
+            match = EXPECTED_HEADERS & headers_lower
+            print(f"\n-- Table {t['table_index']} (headers match: {sorted(match)}) --")
+            print(f"   Headers : {t['headers']}")
+            print(f"   Row count: {len(t['rows'])}")
             for row in t['rows']:
-                print(f"     {row}")
+                print(f"   {row}")
 
-        # Dump elements with apartment-related class names
-        apt_els = await page.evaluate("""
+        # Also try scanning for div/list-based tables with those header texts
+        print("\n=== SCANNING FOR DIV-BASED TABLE ===")
+        div_data = await page.evaluate("""
             () => {
-                const keywords = ['apartment','bostad','unit','listing','lagenh','object','home','hem','residence'];
+                // Find any element whose direct text contains our header words
+                const targets = ['Nummer','Vaning','Antal rum','Storlek','Pris','Avgift','Status',
+                                 'V\u00e5ning','antal','pris','avgift','status','storlek'];
                 const found = [];
                 document.querySelectorAll('*').forEach(el => {
-                    const cls = (el.className || '').toLowerCase();
-                    if (keywords.some(k => cls.includes(k))) {
-                        const text = el.innerText ? el.innerText.trim() : '';
-                        if (text) found.push({ tag: el.tagName, cls: el.className, text: text.slice(0, 300) });
+                    if (el.children.length < 2) return;
+                    const text = el.innerText || '';
+                    const hits = targets.filter(t => text.toLowerCase().includes(t.toLowerCase()));
+                    if (hits.length >= 3) {
+                        found.push({
+                            tag: el.tagName,
+                            cls: el.className,
+                            hits,
+                            text: text.trim().slice(0, 600)
+                        });
                     }
                 });
+                // Return smallest matching containers (most specific)
+                found.sort((a, b) => a.text.length - b.text.length);
                 const seen = new Set();
                 return found.filter(f => {
                     if (seen.has(f.text)) return false;
                     seen.add(f.text);
                     return true;
-                }).slice(0, 30);
+                }).slice(0, 10);
             }
         """)
 
-        print(f"\n=== APARTMENT-RELATED ELEMENTS ({len(apt_els)}) ===")
-        for el in apt_els:
-            print(f"  <{el['tag']} class=\"{el['cls']}\">")
-            print(f"    {repr(el['text'][:200])}")
+        for el in div_data:
+            print(f"\n  <{el['tag']} class=\"{el['cls']}\"> hits={el['hits']}")
+            print(f"  {repr(el['text'])}")
 
-        # Full visible page text
-        body_text = await page.evaluate("() => document.body.innerText")
-        print(f"\n=== PAGE TEXT (first 4000 chars) ===")
-        print(body_text[:4000])
+        # Full page text so we can see what's actually there
+        body = await page.evaluate("() => document.body.innerText")
+        print("\n=== FULL PAGE TEXT (first 5000 chars) ===")
+        print(body[:5000])
 
         await browser.close()
 

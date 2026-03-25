@@ -6,8 +6,14 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -25,9 +31,14 @@ jobs:
       - name: Export CSV
         run: python tools/export_csv.py
 
-      - name: Upload CSV
-        uses: actions/upload-artifact@v4
-        with:
-          name: besqab-apartments-csv
-          path: data/latest/apartments.csv
-          retention-days: 7
+      - name: Commit results
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/latest/besqab.json data/latest/apartments.csv
+          if git diff --staged --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "test: besqab hertha scrape $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            git push
+          fi

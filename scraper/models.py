@@ -23,6 +23,7 @@ class Project:
     monthly_fee_from: Optional[int] = None   # SEK/month (bostadsrätt avgift)
     monthly_fee_to: Optional[int] = None
     move_in_date: Optional[str] = None
+    apartments: list = field(default_factory=list)  # individual apartment rows from table
     scraped_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
 
     def to_dict(self) -> dict:

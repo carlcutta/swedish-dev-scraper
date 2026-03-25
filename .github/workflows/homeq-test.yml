@@ -1,0 +1,31 @@
+name: HomeQ Juli Living Test (page 1)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium --with-deps
+
+      - name: Run page-1 test
+        run: python tools/homeq_test.py
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: homeq-test-results-${{ github.run_id }}
+          path: data/homeq_test_*.json
+          retention-days: 7

@@ -1,8 +1,8 @@
 {
   "developer": "Peab",
   "developer_url": "https://www.peab.se",
-  "scraped_at": "2026-03-25T08:50:15.875149+00:00",
+  "scraped_at": "2026-03-25T17:55:26.510546+00:00",
   "project_count": 0,
-  "error": "Page.goto: Timeout 60000ms exceeded.\nCall log:\nnavigating to \"https://www.peab.se/bostad/\", waiting until \"domcontentloaded\"\n",
+  "error": null,
   "projects": []
 }
